@@ -3,7 +3,7 @@
   "name": "Chrome Morph",
   "version": "0.3.0",
   "description": "Tell any page what to do. Press the hotkey, type an instruction or pick a preset, watch it morph.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "userScripts"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

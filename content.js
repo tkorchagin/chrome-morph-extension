@@ -115,7 +115,10 @@
       <div class="morph-backdrop"></div>
       <div class="morph-panel" role="dialog" aria-label="Chrome Morph">
         <div class="morph-presets"><div class="morph-presets-empty">загружаю…</div></div>
-        <div class="morph-history" hidden></div>
+        <div class="morph-history-popover" hidden>
+          <div class="morph-history-title">Недавние запросы</div>
+          <div class="morph-history-list"></div>
+        </div>
         <textarea class="morph-input" placeholder="…или опиши своими словами, что сделать со страницей"></textarea>
         <div class="morph-row">
           <div class="morph-mode-toggle" role="tablist" aria-label="Режим">
@@ -125,6 +128,9 @@
             <button type="button" data-mode="redesign" class="morph-mode-btn" title="Большая перестройка">редизайн</button>
           </div>
           <span class="morph-hint">Enter — отправить</span>
+          <button class="morph-icon-btn morph-history-btn" type="button" title="История" aria-label="History">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </button>
           <button class="morph-icon-btn morph-undo" type="button" title="Отменить последнее" aria-label="Undo" disabled>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
           </button>
@@ -225,7 +231,7 @@
       if (!text) return;
       input.value = "";
       await runRequest({ instruction: text, mode: selectedMode });
-      pushHistory(text).then(() => loadHistory().then((h) => renderHistory(root, h)));
+      pushHistory(text);
     };
 
     submit.addEventListener("click", (e) => { e.stopPropagation(); sendFromInput(); });
@@ -241,34 +247,52 @@
     });
     $(".morph-backdrop").addEventListener("click", hideOverlay);
 
-    const historyBar = root.querySelector(".morph-history");
-    root._morphApi = { input, presetBar, historyBar, runRequest, updateUndoUi };
-    updateUndoUi();
-  }
+    const historyPopover = root.querySelector(".morph-history-popover");
+    const historyList = root.querySelector(".morph-history-list");
+    const historyBtn = root.querySelector(".morph-history-btn");
 
-  function renderHistory(root, items) {
-    const bar = root._morphApi.historyBar;
-    if (!bar) return;
-    bar.innerHTML = "";
-    if (!items || !items.length) { bar.hidden = true; return; }
-    bar.hidden = false;
-    const label = document.createElement("span");
-    label.className = "morph-history-label";
-    label.textContent = "недавно";
-    bar.appendChild(label);
-    for (const text of items) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "morph-history-chip";
-      chip.title = text;
-      chip.textContent = text.length > 36 ? text.slice(0, 35) + "…" : text;
-      chip.addEventListener("click", (e) => {
-        e.stopPropagation();
-        root._morphApi.runRequest({ instruction: text, mode: "auto" });
-        pushHistory(text);
-      });
-      bar.appendChild(chip);
+    historyBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = !historyPopover.hidden;
+      if (isOpen) {
+        historyPopover.hidden = true;
+      } else {
+        loadHistory().then((items) => {
+          renderHistoryList(historyList, items);
+          historyPopover.hidden = false;
+        });
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!historyPopover.hidden && !historyPopover.contains(e.target) && e.target !== historyBtn) {
+        historyPopover.hidden = true;
+      }
+    }, true);
+
+    function renderHistoryList(list, items) {
+      list.innerHTML = "";
+      if (!items.length) {
+        list.innerHTML = '<div class="morph-history-empty">пока пусто</div>';
+        return;
+      }
+      for (const text of items) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "morph-history-row";
+        row.textContent = text;
+        row.addEventListener("click", (e) => {
+          e.stopPropagation();
+          historyPopover.hidden = true;
+          runRequest({ instruction: text, mode: "auto" });
+          pushHistory(text);
+        });
+        list.appendChild(row);
+      }
     }
+
+    root._morphApi = { input, presetBar, runRequest, updateUndoUi };
+    updateUndoUi();
   }
 
   function renderPresets(root, presets) {
@@ -302,9 +326,8 @@
     root.classList.add("morph-open");
     root.classList.remove("morph-shrunk");
     setTimeout(() => root._morphApi.input.focus(), 30);
-    const [presets, history] = await Promise.all([loadPresets(), loadHistory()]);
+    const presets = await loadPresets();
     renderPresets(root, presets);
-    renderHistory(root, history);
   }
 
   function hideOverlay() {

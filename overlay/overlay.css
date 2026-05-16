@@ -158,24 +158,32 @@
 
 .morph-preset-emoji { font-size: 14px; line-height: 1; }
 
-/* History */
-.morph-history {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed rgba(20, 22, 28, 0.08);
+/* History popover */
+.morph-history-popover {
+  position: absolute;
+  left: 18px; right: 18px; bottom: 64px;
+  background: #ffffff;
+  border: 1px solid rgba(20, 22, 28, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(20, 22, 28, 0.18);
+  z-index: 5;
+  max-height: 280px; overflow-y: auto;
 }
-.morph-history-label {
+.morph-history-popover[hidden] { display: none !important; }
+.morph-history-title {
   font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
-  color: #8a8a93; font-weight: 600; margin-right: 4px;
+  color: #8a8a93; font-weight: 600; margin-bottom: 8px;
 }
-.morph-history-chip {
-  padding: 5px 10px; font-size: 12px; color: #4a4a55;
-  background: #fafafc; border: 1px solid rgba(20, 22, 28, 0.06);
-  border-radius: 6px; cursor: pointer; font-family: inherit;
-  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.morph-history-list { display: flex; flex-direction: column; gap: 3px; }
+.morph-history-row {
+  text-align: left; padding: 7px 10px; font-size: 13px; color: #1a1a1f;
+  background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+  font-family: inherit; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.morph-history-chip:hover { background: #e7e7ff; color: #1a1a1f; }
+.morph-history-row:hover { background: #f3f3f7; }
+.morph-history-empty { color: #8a8a93; font-style: italic; font-size: 12px; padding: 6px 0; }
 
 /* Input */
 .morph-input {
