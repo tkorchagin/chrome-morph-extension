@@ -141,13 +141,6 @@
         </div>
       </div>
       <div class="morph-toast"></div>
-      <div class="morph-preview-pane" hidden>
-        <div class="morph-preview-bar">
-          <span class="morph-preview-title">Preview</span>
-          <button class="morph-preview-close" type="button" title="Закрыть превью">×</button>
-        </div>
-        <iframe class="morph-preview-frame" sandbox="allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer"></iframe>
-      </div>
     `;
     sh.appendChild(root);
     host._morphRootEl = root;
@@ -207,9 +200,19 @@
       const startedAt = Date.now();
       try {
         const patch = await callBackend({ instruction, mode, presetId });
+        await applyPatch(patch);
+        updateUndoUi();
         const elapsed = Date.now() - startedAt;
         if (elapsed < minSpinMs) await new Promise(r => setTimeout(r, minSpinMs - elapsed));
-        openPreview(patch);
+        hideOverlay();
+        const moduleLabel = {style: "стиль", dom: "контент", redesign: "редизайн"}[patch.module] || patch.module || "";
+        const notes = patch.notes || "Готово";
+        const jsErr = applyPatch._lastJsError;
+        if (jsErr) {
+          showToast(`[${moduleLabel}] JS-ошибка: ${jsErr}`, true, 7000);
+        } else {
+          showToast(moduleLabel ? `[${moduleLabel}] ${notes}` : notes);
+        }
       } catch (e) {
         unshrink();
         console.error("morph error", e);
@@ -226,85 +229,6 @@
       await runRequest({ instruction: text, mode: selectedMode });
       pushHistory(text);
     };
-
-    const previewPane = root.querySelector(".morph-preview-pane");
-    const previewFrame = root.querySelector(".morph-preview-frame");
-    const previewClose = root.querySelector(".morph-preview-close");
-    const previewTitle = root.querySelector(".morph-preview-title");
-
-    function openPreview(patch) {
-      const baseHref = location.href;
-      // Snapshot the live document, but as a fresh detached clone so we can
-      // mutate it cleanly. Drop everything that would break the iframe:
-      //   - our own overlay host
-      //   - our prior patch <style> tags
-      //   - the page's <script> tags (they'd fail under sandbox and fight with our patch)
-      //   - <meta http-equiv="Content-Security-Policy"> (GitHub etc bake CSP into HTML)
-      //   - preload/prefetch links that fetch resources we'll never use
-      const docClone = document.documentElement.cloneNode(true);
-      docClone.querySelectorAll(
-        "#" + HOST_ID + ", " +
-        "style[id^='" + PATCH_PREFIX + "'], " +
-        "script, " +
-        "meta[http-equiv='Content-Security-Policy'], " +
-        "meta[http-equiv='content-security-policy'], " +
-        "link[rel='preload'], link[rel='modulepreload'], link[rel='prefetch']"
-      ).forEach((n) => n.remove());
-
-      // Insert <base> first inside <head>.
-      let head = docClone.querySelector("head");
-      if (!head) { head = document.createElement("head"); docClone.insertBefore(head, docClone.firstChild); }
-      const baseEl = document.createElement("base");
-      baseEl.setAttribute("href", baseHref);
-      head.insertBefore(baseEl, head.firstChild);
-
-      // Append our CSS to head.
-      if (patch.css) {
-        const styleEl = document.createElement("style");
-        styleEl.textContent = patch.css;
-        head.appendChild(styleEl);
-      }
-
-      // Append our JS to body.
-      let body = docClone.querySelector("body");
-      if (!body) { body = document.createElement("body"); docClone.appendChild(body); }
-      if (patch.js && patch.js.trim()) {
-        const scriptEl = document.createElement("script");
-        scriptEl.textContent = `(function(){ try { ${patch.js} } catch(e){ console.error('[chrome-morph]', e); } })();`;
-        body.appendChild(scriptEl);
-      }
-
-      const finalHtml = "<!doctype html>" + docClone.outerHTML;
-
-      // Load the shell from our own origin so its CSP is empty (parent github.com's
-      // CSP doesn't propagate cross-origin). Once it's ready it postMessages back,
-      // we postMessage the HTML payload, it document.writes it.
-      const shellUrl = CFG.API_BASE + "/preview/shell";
-      const onMessage = (e) => {
-        if (e.source !== previewFrame.contentWindow) return;
-        if (e.data?.type !== "MORPH_PREVIEW_READY") return;
-        previewFrame.contentWindow.postMessage(
-          { type: "MORPH_PREVIEW", html: finalHtml },
-          "*"
-        );
-        window.removeEventListener("message", onMessage);
-      };
-      window.addEventListener("message", onMessage);
-      previewFrame.removeAttribute("srcdoc");
-      // Cache-bust to force a fresh load (so the message listener attaches even if
-      // the same shell was used moments ago).
-      previewFrame.src = shellUrl + "?t=" + Date.now();
-
-      previewTitle.textContent = `Превью${patch.module ? " · " + patch.module : ""} · ${(patch.notes || "").slice(0, 80)}`;
-      previewPane.hidden = false;
-      document.getElementById(HOST_ID).style.pointerEvents = "auto";
-    }
-    function closePreview() {
-      previewPane.hidden = true;
-      previewFrame.srcdoc = "";
-      hideOverlay();
-    }
-    previewClose?.addEventListener("click", (e) => { e.stopPropagation(); closePreview(); });
 
     submit.addEventListener("click", (e) => { e.stopPropagation(); sendFromInput(); });
     undo.addEventListener("click", (e) => { e.stopPropagation(); undoLast(); updateUndoUi(); });
