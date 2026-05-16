@@ -47,6 +47,23 @@
     try { return JSON.parse(resp.text); } catch (_) { return resp.text; }
   }
 
+  // -------- history --------
+  async function loadHistory() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([CFG.HISTORY_KEY], (data) => {
+        resolve(Array.isArray(data[CFG.HISTORY_KEY]) ? data[CFG.HISTORY_KEY] : []);
+      });
+    });
+  }
+
+  async function pushHistory(text) {
+    const t = (text || "").trim();
+    if (!t) return;
+    const list = await loadHistory();
+    const dedup = [t, ...list.filter((x) => x !== t)].slice(0, CFG.HISTORY_MAX);
+    chrome.storage.local.set({ [CFG.HISTORY_KEY]: dedup });
+  }
+
   // -------- presets --------
   async function loadPresets() {
     const fresh = cachedPresets && (Date.now() - cachedPresetsAt) < CFG.PRESETS_TTL_MS;
@@ -98,6 +115,7 @@
       <div class="morph-backdrop"></div>
       <div class="morph-panel" role="dialog" aria-label="Chrome Morph">
         <div class="morph-presets"><div class="morph-presets-empty">загружаю…</div></div>
+        <div class="morph-history" hidden></div>
         <textarea class="morph-input" placeholder="…или опиши своими словами, что сделать со страницей"></textarea>
         <div class="morph-row">
           <div class="morph-mode-toggle" role="tablist" aria-label="Режим">
@@ -187,7 +205,12 @@
         hideOverlay();
         const moduleLabel = {style: "стиль", dom: "контент", redesign: "редизайн"}[patch.module] || patch.module || "";
         const notes = patch.notes || "Готово";
-        showToast(moduleLabel ? `[${moduleLabel}] ${notes}` : notes);
+        const jsErr = applyPatch._lastJsError;
+        if (jsErr) {
+          showToast(`[${moduleLabel}] JS-ошибка: ${jsErr}`, true, 7000);
+        } else {
+          showToast(moduleLabel ? `[${moduleLabel}] ${notes}` : notes);
+        }
       } catch (e) {
         unshrink();
         console.error("morph error", e);
@@ -202,11 +225,13 @@
       if (!text) return;
       input.value = "";
       await runRequest({ instruction: text, mode: selectedMode });
+      pushHistory(text).then(() => loadHistory().then((h) => renderHistory(root, h)));
     };
 
-    submit.addEventListener("click", sendFromInput);
-    undo.addEventListener("click", () => { undoLast(); updateUndoUi(); });
-    root.querySelector(".morph-reset")?.addEventListener("click", () => {
+    submit.addEventListener("click", (e) => { e.stopPropagation(); sendFromInput(); });
+    undo.addEventListener("click", (e) => { e.stopPropagation(); undoLast(); updateUndoUi(); });
+    root.querySelector(".morph-reset")?.addEventListener("click", (e) => {
+      e.stopPropagation();
       hideOverlay();
       location.reload();
     });
@@ -216,8 +241,34 @@
     });
     $(".morph-backdrop").addEventListener("click", hideOverlay);
 
-    root._morphApi = { input, presetBar, runRequest, updateUndoUi };
+    const historyBar = root.querySelector(".morph-history");
+    root._morphApi = { input, presetBar, historyBar, runRequest, updateUndoUi };
     updateUndoUi();
+  }
+
+  function renderHistory(root, items) {
+    const bar = root._morphApi.historyBar;
+    if (!bar) return;
+    bar.innerHTML = "";
+    if (!items || !items.length) { bar.hidden = true; return; }
+    bar.hidden = false;
+    const label = document.createElement("span");
+    label.className = "morph-history-label";
+    label.textContent = "недавно";
+    bar.appendChild(label);
+    for (const text of items) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "morph-history-chip";
+      chip.title = text;
+      chip.textContent = text.length > 36 ? text.slice(0, 35) + "…" : text;
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        root._morphApi.runRequest({ instruction: text, mode: "auto" });
+        pushHistory(text);
+      });
+      bar.appendChild(chip);
+    }
   }
 
   function renderPresets(root, presets) {
@@ -233,7 +284,8 @@
       btn.className = "morph-preset";
       btn.title = p.description || "";
       btn.innerHTML = `<span class="morph-preset-emoji">${p.emoji || "✨"}</span><span>${p.label}</span>`;
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         root._morphApi.runRequest({
           instruction: p.instruction,
           mode: p.mode || "auto",
@@ -250,8 +302,9 @@
     root.classList.add("morph-open");
     root.classList.remove("morph-shrunk");
     setTimeout(() => root._morphApi.input.focus(), 30);
-    const presets = await loadPresets();
+    const [presets, history] = await Promise.all([loadPresets(), loadHistory()]);
     renderPresets(root, presets);
+    renderHistory(root, history);
   }
 
   function hideOverlay() {
@@ -310,16 +363,24 @@
       } catch (e) { console.warn("morph: bad selector", sel, e); }
     });
 
+    let jsResult = null;
     if (patch.js && patch.js.trim()) {
       try {
         // CSP-safe execution: ask the background SW to run the code in the
         // tab's MAIN world via chrome.scripting.executeScript — that bypasses
-        // the page's strict CSP (gmail.com, etc.).
-        await chrome.runtime.sendMessage({ type: "MORPH_EXEC", code: patch.js });
+        // the page's strict CSP (gmail.com, github.com, etc.).
+        jsResult = await chrome.runtime.sendMessage({ type: "MORPH_EXEC", code: patch.js });
+        if (jsResult && jsResult.ok === false) {
+          console.error("[chrome-morph] JS patch failed:", jsResult.error, "\nCode:\n", patch.js);
+        } else {
+          console.debug("[chrome-morph] JS patch ran ok");
+        }
       } catch (e) {
-        console.error("morph: MORPH_EXEC failed", e);
+        console.error("[chrome-morph] MORPH_EXEC transport failed", e);
+        jsResult = { ok: false, error: String(e?.message || e) };
       }
     }
+    applyPatch._lastJsError = jsResult && jsResult.ok === false ? jsResult.error : null;
 
     undoStack.push({ styleEl, removedNodes });
     if (undoStack.length > CFG.UNDO_DEPTH) undoStack.shift();

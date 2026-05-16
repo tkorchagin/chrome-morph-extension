@@ -21,4 +21,8 @@ window.MORPH_CONFIG = {
 
   // Storage key for the anonymous per-install user UUID.
   USER_ID_KEY: "morph_user_id",
+
+  // Recent free-form instructions for quick re-use.
+  HISTORY_KEY: "morph_history",
+  HISTORY_MAX: 12,
 };

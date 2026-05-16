@@ -66,16 +66,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!tabId) { sendResponse({ ok: false, error: "no tab" }); return true; }
     (async () => {
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId, frameIds: [sender.frameId || 0] },
+        // chrome.scripting.executeScript with world: "MAIN" bypasses the page's
+        // CSP entirely (per Chrome docs) — including eval inside the injected fn.
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
           world: "MAIN",
           func: (code) => {
-            try { new Function(code)(); }
-            catch (e) { console.error("[chrome-morph] page-side error:", e); }
+            try {
+              // eslint-disable-next-line no-eval
+              (0, eval)(code);
+              return { ok: true };
+            } catch (e) {
+              return { ok: false, error: String((e && e.message) || e) };
+            }
           },
           args: [msg.code || ""],
         });
-        sendResponse({ ok: true });
+        const r = results?.[0]?.result;
+        sendResponse(r || { ok: false, error: "no result" });
       } catch (e) {
         sendResponse({ ok: false, error: String(e?.message || e) });
       }
