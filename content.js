@@ -141,6 +141,13 @@
         </div>
       </div>
       <div class="morph-toast"></div>
+      <div class="morph-preview-pane" hidden>
+        <div class="morph-preview-bar">
+          <span class="morph-preview-title">Preview</span>
+          <button class="morph-preview-close" type="button" title="Закрыть превью">×</button>
+        </div>
+        <iframe class="morph-preview-frame" sandbox="allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer"></iframe>
+      </div>
     `;
     sh.appendChild(root);
     host._morphRootEl = root;
@@ -195,28 +202,14 @@
     const runRequest = async ({ instruction, mode = "auto", presetId = null }) => {
       submit.disabled = true;
       shrink();
-      // Force layout flush so the transition kicks in immediately even on
-      // fast/cached responses (chrome occasionally batches class changes).
-      // Read offsetWidth to trigger a reflow.
-      // eslint-disable-next-line no-unused-expressions
       panel.offsetWidth;
       const minSpinMs = 450;
       const startedAt = Date.now();
       try {
         const patch = await callBackend({ instruction, mode, presetId });
-        await applyPatch(patch);
-        updateUndoUi();
         const elapsed = Date.now() - startedAt;
         if (elapsed < minSpinMs) await new Promise(r => setTimeout(r, minSpinMs - elapsed));
-        hideOverlay();
-        const moduleLabel = {style: "стиль", dom: "контент", redesign: "редизайн"}[patch.module] || patch.module || "";
-        const notes = patch.notes || "Готово";
-        const jsErr = applyPatch._lastJsError;
-        if (jsErr) {
-          showToast(`[${moduleLabel}] JS-ошибка: ${jsErr}`, true, 7000);
-        } else {
-          showToast(moduleLabel ? `[${moduleLabel}] ${notes}` : notes);
-        }
+        openPreview(patch);
       } catch (e) {
         unshrink();
         console.error("morph error", e);
@@ -233,6 +226,43 @@
       await runRequest({ instruction: text, mode: selectedMode });
       pushHistory(text);
     };
+
+    const previewPane = root.querySelector(".morph-preview-pane");
+    const previewFrame = root.querySelector(".morph-preview-frame");
+    const previewClose = root.querySelector(".morph-preview-close");
+    const previewTitle = root.querySelector(".morph-preview-title");
+
+    function openPreview(patch) {
+      const baseHref = location.href;
+      // Snapshot the document (sans our overlay & previous patches).
+      const docHtml = document.documentElement.outerHTML
+        .replace(/<style id="morph-patch-[^"]*"[^>]*>[\s\S]*?<\/style>/g, "");
+      // Inject <base>, our CSS, and our JS into the snapshot.
+      let html = docHtml;
+      const headInsert =
+        `<base href="${baseHref}">` +
+        (patch.css ? `<style>${patch.css}</style>` : "");
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head[^>]*>/i, (m) => m + headInsert);
+      } else {
+        html = `<head>${headInsert}</head>` + html;
+      }
+      if (patch.js && patch.js.trim()) {
+        const scriptTag = `<script>(function(){ try { ${patch.js} } catch(e){ console.error(e); } })();<\/script>`;
+        if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, scriptTag + "</body>");
+        else html += scriptTag;
+      }
+      previewFrame.srcdoc = html;
+      previewTitle.textContent = `Превью${patch.module ? " · " + patch.module : ""} · ${(patch.notes || "").slice(0, 80)}`;
+      previewPane.hidden = false;
+      document.getElementById(HOST_ID).style.pointerEvents = "auto";
+    }
+    function closePreview() {
+      previewPane.hidden = true;
+      previewFrame.srcdoc = "";
+      hideOverlay();
+    }
+    previewClose?.addEventListener("click", (e) => { e.stopPropagation(); closePreview(); });
 
     submit.addEventListener("click", (e) => { e.stopPropagation(); sendFromInput(); });
     undo.addEventListener("click", (e) => { e.stopPropagation(); undoLast(); updateUndoUi(); });
