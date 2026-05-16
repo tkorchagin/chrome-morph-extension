@@ -1,0 +1,284 @@
+/* Shadow-DOM scoped styles. No #morph-overlay-root prefix here — the host's
+   shadow root isolates these from page CSS and vice versa. */
+
+:host, .morph-root, .morph-root * {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #1a1a1f;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.morph-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.morph-root.morph-open { pointer-events: auto; }
+
+.morph-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 22, 28, 0.18);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.morph-root.morph-open .morph-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.morph-root.morph-shrunk .morph-backdrop {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.morph-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(780px, 94vw);
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 24px 60px rgba(20, 22, 28, 0.22), 0 2px 8px rgba(20, 22, 28, 0.08);
+  border: 1px solid rgba(20, 22, 28, 0.06);
+
+  transform: translate(-50%, -50%) scale(0.96);
+  opacity: 0;
+  transition: transform 0.22s cubic-bezier(.2,.8,.2,1),
+              opacity 0.18s ease,
+              top 0.32s cubic-bezier(.2,.8,.2,1),
+              left 0.32s cubic-bezier(.2,.8,.2,1),
+              width 0.32s cubic-bezier(.2,.8,.2,1),
+              max-height 0.32s cubic-bezier(.2,.8,.2,1),
+              border-radius 0.32s cubic-bezier(.2,.8,.2,1),
+              padding 0.32s cubic-bezier(.2,.8,.2,1);
+}
+
+.morph-root.morph-open .morph-panel {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+/* Shrunk state — small spinning bubble bottom-right */
+.morph-root.morph-shrunk .morph-panel {
+  top: calc(100vh - 78px);
+  left: calc(100vw - 78px);
+  width: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  padding: 0;
+  border-radius: 999px;
+  transform: none;
+  cursor: pointer;
+  overflow: visible;
+  background: #ffffff;
+}
+
+.morph-root .morph-panel {
+  max-height: 80vh;
+}
+
+.morph-root.morph-shrunk .morph-panel > * {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.morph-root.morph-shrunk .morph-panel::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  background: conic-gradient(from 0deg,
+    rgba(122, 122, 255, 0) 0deg,
+    rgba(122, 122, 255, 0.15) 60deg,
+    #7a7aff 220deg,
+    #b86cff 320deg,
+    rgba(184, 108, 255, 0) 360deg);
+  animation: morph-spin 0.9s linear infinite;
+}
+
+.morph-root.morph-shrunk .morph-panel::after {
+  content: "✨";
+  position: absolute;
+  inset: 3px;
+  background: #ffffff;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+@keyframes morph-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Presets */
+.morph-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  max-height: 132px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.morph-presets-empty {
+  font-size: 12px;
+  color: #8a8a93;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.morph-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  color: #1a1a1f;
+  background: #f3f3f7;
+  border: 1px solid rgba(20, 22, 28, 0.06);
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, transform 0.12s;
+}
+
+.morph-preset:hover {
+  background: #e7e7ff;
+  transform: translateY(-1px);
+}
+
+.morph-preset-emoji { font-size: 14px; line-height: 1; }
+
+/* Input */
+.morph-input {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #1a1a1f;
+  background: #fafafc;
+  border: 1px solid rgba(20, 22, 28, 0.08);
+  border-radius: 10px;
+  outline: none;
+  font-family: inherit;
+  display: block;
+}
+.morph-input::placeholder { color: #8a8a93; }
+.morph-input:focus {
+  border-color: #7a7aff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(122, 122, 255, 0.18);
+}
+
+/* Action row */
+.morph-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.morph-hint {
+  font-size: 11px;
+  color: #8a8a93;
+  margin-right: auto;
+}
+
+.morph-mode-toggle {
+  display: inline-flex;
+  background: #f3f3f7;
+  border: 1px solid rgba(20, 22, 28, 0.08);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.morph-mode-btn {
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6a6a75;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.morph-mode-btn:hover { color: #1a1a1f; }
+.morph-mode-btn.active {
+  background: #ffffff;
+  color: #1a1a1f;
+  box-shadow: 0 1px 2px rgba(20, 22, 28, 0.08);
+}
+
+.morph-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6a6a75;
+  background: #f3f3f7;
+  border: 1px solid rgba(20, 22, 28, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.morph-icon-btn svg { display: block; }
+.morph-icon-btn:hover:not(:disabled) {
+  background: #e7e7ff;
+  color: #1a1a1f;
+}
+.morph-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.morph-btn.morph-submit {
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7a7aff, #b86cff);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.morph-btn.morph-submit:hover { filter: brightness(1.05); }
+.morph-btn.morph-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Toast */
+.morph-toast {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  max-width: 360px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #fff;
+  background: #1a1a1f;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.morph-toast.show { opacity: 1; transform: translateY(0); }
+.morph-toast.error { background: #c44141; }
