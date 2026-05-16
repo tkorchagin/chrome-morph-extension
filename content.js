@@ -274,7 +274,27 @@
         body.appendChild(scriptEl);
       }
 
-      previewFrame.srcdoc = "<!doctype html>" + docClone.outerHTML;
+      const finalHtml = "<!doctype html>" + docClone.outerHTML;
+
+      // Load the shell from our own origin so its CSP is empty (parent github.com's
+      // CSP doesn't propagate cross-origin). Once it's ready it postMessages back,
+      // we postMessage the HTML payload, it document.writes it.
+      const shellUrl = CFG.API_BASE + "/preview/shell";
+      const onMessage = (e) => {
+        if (e.source !== previewFrame.contentWindow) return;
+        if (e.data?.type !== "MORPH_PREVIEW_READY") return;
+        previewFrame.contentWindow.postMessage(
+          { type: "MORPH_PREVIEW", html: finalHtml },
+          "*"
+        );
+        window.removeEventListener("message", onMessage);
+      };
+      window.addEventListener("message", onMessage);
+      previewFrame.removeAttribute("srcdoc");
+      // Cache-bust to force a fresh load (so the message listener attaches even if
+      // the same shell was used moments ago).
+      previewFrame.src = shellUrl + "?t=" + Date.now();
+
       previewTitle.textContent = `Превью${patch.module ? " · " + patch.module : ""} · ${(patch.notes || "").slice(0, 80)}`;
       previewPane.hidden = false;
       document.getElementById(HOST_ID).style.pointerEvents = "auto";
