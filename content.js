@@ -234,25 +234,47 @@
 
     function openPreview(patch) {
       const baseHref = location.href;
-      // Snapshot the document (sans our overlay & previous patches).
-      const docHtml = document.documentElement.outerHTML
-        .replace(/<style id="morph-patch-[^"]*"[^>]*>[\s\S]*?<\/style>/g, "");
-      // Inject <base>, our CSS, and our JS into the snapshot.
-      let html = docHtml;
-      const headInsert =
-        `<base href="${baseHref}">` +
-        (patch.css ? `<style>${patch.css}</style>` : "");
-      if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/<head[^>]*>/i, (m) => m + headInsert);
-      } else {
-        html = `<head>${headInsert}</head>` + html;
+      // Snapshot the live document, but as a fresh detached clone so we can
+      // mutate it cleanly. Drop everything that would break the iframe:
+      //   - our own overlay host
+      //   - our prior patch <style> tags
+      //   - the page's <script> tags (they'd fail under sandbox and fight with our patch)
+      //   - <meta http-equiv="Content-Security-Policy"> (GitHub etc bake CSP into HTML)
+      //   - preload/prefetch links that fetch resources we'll never use
+      const docClone = document.documentElement.cloneNode(true);
+      docClone.querySelectorAll(
+        "#" + HOST_ID + ", " +
+        "style[id^='" + PATCH_PREFIX + "'], " +
+        "script, " +
+        "meta[http-equiv='Content-Security-Policy'], " +
+        "meta[http-equiv='content-security-policy'], " +
+        "link[rel='preload'], link[rel='modulepreload'], link[rel='prefetch']"
+      ).forEach((n) => n.remove());
+
+      // Insert <base> first inside <head>.
+      let head = docClone.querySelector("head");
+      if (!head) { head = document.createElement("head"); docClone.insertBefore(head, docClone.firstChild); }
+      const baseEl = document.createElement("base");
+      baseEl.setAttribute("href", baseHref);
+      head.insertBefore(baseEl, head.firstChild);
+
+      // Append our CSS to head.
+      if (patch.css) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = patch.css;
+        head.appendChild(styleEl);
       }
+
+      // Append our JS to body.
+      let body = docClone.querySelector("body");
+      if (!body) { body = document.createElement("body"); docClone.appendChild(body); }
       if (patch.js && patch.js.trim()) {
-        const scriptTag = `<script>(function(){ try { ${patch.js} } catch(e){ console.error(e); } })();<\/script>`;
-        if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, scriptTag + "</body>");
-        else html += scriptTag;
+        const scriptEl = document.createElement("script");
+        scriptEl.textContent = `(function(){ try { ${patch.js} } catch(e){ console.error('[chrome-morph]', e); } })();`;
+        body.appendChild(scriptEl);
       }
-      previewFrame.srcdoc = html;
+
+      previewFrame.srcdoc = "<!doctype html>" + docClone.outerHTML;
       previewTitle.textContent = `Превью${patch.module ? " · " + patch.module : ""} · ${(patch.notes || "").slice(0, 80)}`;
       previewPane.hidden = false;
       document.getElementById(HOST_ID).style.pointerEvents = "auto";
